@@ -31,3 +31,13 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local inputs, generated media, and build outputs
+.DS_Store
+/work/
+/dist/
+*.pptx
+*.mp4
+*.wav
+*.aiff
+.env.*
