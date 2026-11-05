@@ -8,21 +8,22 @@
 
 - `.pptx` を指定すると、スライド画像と発表者ノートの読み上げを組み合わせたMP4を出力する。
 - Macにインストール済みのMicrosoft PowerPointを利用する。
+- 音声合成には別途インストール・起動したローカルのVOICEVOX Engineを利用する。
 - スライド単位で成果物を保持し、修正時の再生成と失敗後の再開を可能にする。
 - 配布・起動は単一の実行ファイルを目指す。Python等の言語ランタイムは不要とする。
 
-実装言語の第一候補はGo。詳細は [要件](docs/requirements.md) を参照。
+実装言語の第一候補はGo。詳細は [要件](docs/requirements.md) と [設計](design.md) を参照。
 
 ## 想定する使い方（未実装）
 
 ```sh
-deckreel presentation.pptx --output output.mp4
+deckreel presentation.pptx --output output.mp4 --speaker <style-id>
 ```
 
 ## 次に確認すること
 
 1. macOS版PowerPointの自動操作で、元の資料を変更せずにスライドを書き出せるか。
-2. macOS標準の日本語音声で、解説用途として十分な品質が得られるか。
+2. VOICEVOX Engineの対応API・話者・読み上げ品質と利用条件を確認する。
 3. 動画処理に必要な依存物を同梱できるか。配布ライセンス、容量、署名も確認する。
 
 このリポジトリには実資料、台本、生成した動画を登録しない。
