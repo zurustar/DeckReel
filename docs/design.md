@@ -1,7 +1,7 @@
 # DeckReel 設計書
 
 [要件](requirements.md)（PR #1で導入）に対応する初期設計。
-設計段階の文書であり、実装済み・Mac実機で検証済みであることを意味しない。
+初期実装に対応する設計。PowerPoint自動操作と実際のVOICEVOXの品質、配布用署名・公証は実機検証が残る。
 音声合成はVOICEVOXを採用する方針に要件を更新し、実装の責務、データ、再実行の規則を定義する。
 
 ## 1. 設計方針
@@ -15,7 +15,7 @@ Go製CLIを処理全体の制御役とし、PPTXの解析、スライドごと�
 | ノート抽出 | ZIP/XMLを直接読み、PowerPointの画面操作から分離 | 採用方針 |
 | スライド描画 | macOS版PowerPointを自動操作 | 実機検証が必要 |
 | 音声 | ローカルのVOICEVOX EngineへHTTP接続 | 採用方針。対応バージョン・品質を検証 |
-| 動画処理 | FFmpeg系のアダプターを第一候補 | 採否・配布構成は未確定 |
+| 動画処理 | macOS標準のAVFoundationを使う埋め込みヘルパー | 初期実装。長尺の実機確認が必要 |
 | 配布 | 1つの実行ファイル。必要な補助実行物は埋め込み・展開を検討 | 署名・ライセンス等を検証 |
 
 GUI、Webサービス、並列ジョブ、アニメーション再現、クラウド音声連携は初期設計に含めない。
@@ -58,12 +58,12 @@ flowchart TD
 
 ## 3. CLI案
 
-以下は未実装のインターフェース案。サブコマンドを増やさず、1回の実行で変換する。
+サブコマンドを増やさず、1回の実行で変換する。話者一覧は `--list-speakers` で確認する。
 
 ```sh
-deckreel presentation.pptx --output output.mp4
-deckreel presentation.pptx --output output.mp4 --speaker <style-id> --speed 1.0
-deckreel presentation.pptx --output output.mp4 --dictionary readings.json --work-dir ./work/demo
+deckreel presentation.pptx --output output.mp4 --speaker 3
+deckreel presentation.pptx --output output.mp4 --speaker 3 --speed 1.0
+deckreel presentation.pptx --output output.mp4 --speaker 3 --dictionary readings.json --work-dir ./work/demo
 ```
 
 | オプション | 意味・既定 |
@@ -152,8 +152,9 @@ Engineのユーザー辞書を参照する場合は辞書内容のハッシュ�
 
 ## 6. 動画と時間の扱い
 
-動画処理はFFmpeg/ffprobe相当のエンコード・検査機能を持つアダプターに集約する。
-FFmpeg採用時の候補はVideoToolboxのH.264エンコーダーとAAC。具体的なビルドと利用可否は配布検証で決め、利用不可なら明確なエラーにする。
+動画処理はAVFoundationのAVAssetWriterによるH.264/AACエンコードと、AVAssetExportSessionのパススルー結合を使う。
+PDF描画はCoreGraphicsで行う。Swift製ヘルパーをビルド時にコンパイル・署名してGoバイナリに埋め込む。利用時はSwiftやFFmpegの個別導入を要求しない。
+利用できない機能は明確なエラーにし、実機で長尺と音声境界を確認する。
 未検証のエンコーダーへ自動で切り替えない。
 
 - 映像：1920×1080、30fps固定、H.264、yuv420p。
@@ -272,4 +273,4 @@ Mac依存部分はアダプターを差し替え、Go上で処理計画とキャ
 4. 上記の成立後にアダプターとPipeline Runnerを実装する。
 5. 差分再生成・再開・出力保護を組み込み、要件の完了条件をMac実機で確認する。
 
-今回の変更は設計書・要件・READMEの更新のみとし、実装・依存ツール導入・Mac操作は行わない。
+実装の構成・検証方法・残る制限は[開発と検証](development.md)に記載する。

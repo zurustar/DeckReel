@@ -41,3 +41,4 @@ go.work.sum
 *.wav
 *.aiff
 .env.*
+/internal/native/assets/deckreel-native-*
