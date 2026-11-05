@@ -76,6 +76,9 @@ func OpenCache(dir string) (*Cache, error) {
 	if e != nil {
 		return nil, e
 	}
+	if st, err := os.Lstat(abs); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("work directory must not be a symlink")
+	}
 	f, e := Lock(filepath.Join(abs, ".lock"))
 	if e != nil {
 		return nil, e

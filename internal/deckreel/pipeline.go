@@ -127,7 +127,10 @@ func (p Pipeline) Run(ctx context.Context, cfg Config) (err error) {
 	if rel, e := filepath.Rel(cache.Dir, cfg.Output); e == nil && filepath.IsLocal(rel) {
 		return fmt.Errorf("output must be outside the work directory")
 	}
-	snapshot := filepath.Join(cache.Dir, "input", "presentation.pptx")
+	snapshot, err := cache.path(filepath.Join("input", "presentation.pptx"))
+	if err != nil {
+		return err
+	}
 	raw, err := os.ReadFile(cfg.Input)
 	if err != nil {
 		return err
@@ -418,6 +421,15 @@ func (p Pipeline) Run(ctx context.Context, cfg Config) (err error) {
 	}
 	if err = ctx.Err(); err != nil {
 		return err
+	}
+	if needSpeech {
+		current, e := voice.Info(ctx, cfg.Speaker, cfg.ModelRevision)
+		if e != nil {
+			return e
+		}
+		if current.Fingerprint != info.Fingerprint {
+			return fmt.Errorf("VOICEVOX environment changed during rendering; retry to rebuild affected audio")
+		}
 	}
 	if err = Publish(final, cfg.Output, cfg.Overwrite); err != nil {
 		return err

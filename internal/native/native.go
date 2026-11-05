@@ -82,7 +82,15 @@ func (h Helper) Call(ctx context.Context, args ...string) ([]byte, error) {
 }
 func (h Helper) Info(ctx context.Context) (string, error) {
 	b, e := h.Call(ctx, "info")
-	return string(b), e
+	if e != nil {
+		return "", e
+	}
+	executable, e := os.ReadFile(h.Path)
+	if e != nil {
+		return "", e
+	}
+	hash := sha256.Sum256(executable)
+	return string(b) + hex.EncodeToString(hash[:]), nil
 }
 func (h Helper) Render(ctx context.Context, pdf, dir string) (int, error) {
 	b, e := h.Call(ctx, "render", pdf, dir)

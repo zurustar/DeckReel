@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/zurustar/DeckReel/internal/deckreel"
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 func testPDF() []byte {
 	var b bytes.Buffer
 	b.WriteString("%PDF-1.4\n")
-	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 640 480] /Contents 4 0 R /Resources << >> >>", "<< /Length 27 >>\nstream\n1 0 0 rg 0 0 640 480 re f\nendstream"}
+	objects := []string{"<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 640 480] /Contents 4 0 R /Resources << >> >>", "<< /Length 26 >>\nstream\n1 0 0 rg 0 0 640 480 re f\nendstream"}
 	offsets := []int{0}
 	for i, s := range objects {
 		offsets = append(offsets, b.Len())
@@ -45,6 +46,26 @@ func TestNativeMedia(t *testing.T) {
 	}
 	if n, e := h.Render(ctx, pdf, dir); e != nil || n != 1 {
 		t.Fatalf("render: %d %v", n, e)
+	}
+	pngFile, e := os.Open(filepath.Join(dir, "0001.png"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	picture, e := png.Decode(pngFile)
+	pngFile.Close()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if picture.Bounds().Dx() != 1920 || picture.Bounds().Dy() != 1080 {
+		t.Fatal("wrong resolution")
+	}
+	red, green, blue, _ := picture.At(960, 540).RGBA()
+	if red < 60000 || green > 1000 || blue > 1000 {
+		t.Fatal("slide pixels changed")
+	}
+	red, green, blue, _ = picture.At(0, 540).RGBA()
+	if red != 0 || green != 0 || blue != 0 {
+		t.Fatal("4:3 letterbox missing")
 	}
 	pcm := make([]byte, 1600*2*4)
 	for i := 0; i < len(pcm)/2; i++ {
