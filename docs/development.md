@@ -5,6 +5,8 @@
 GoのCLIと `internal/deckreel` がPPTX解析・原稿処理・VOICEVOX接続・工程管理を担当します。
 `internal/native` は埋め込んだmacOS用ヘルパーを検証・展開して呼び出します。
 `native/main.swift` がCoreGraphicsによるPDF描画とAVFoundationによるH.264/AAC生成・パススルー結合を担当します。
+`app/DeckReelApp.swift` がSwiftUIの画面で、同梱した `deckreel` を `--json` 付きの子プロセスとして起動します（[設計 10章](design.md)）。
+`DECKREEL_CLI` に別のCLIのパスを指定すると、開発中のCLIを使えます。
 ヘルパーのコンパイルは開発時のみ。利用者のMacでSwiftを実行・コンパイルすることはありません。
 
 ## テスト
@@ -27,7 +29,8 @@ PowerPointやVOICEVOXのインストールをCIに要求しません。その代
 5. 実際のVOICEVOX Engineで `--list-speakers`、指定スタイル、速度変更、専門用語と長文を確認する。
 6. 音声の末尾、各スライド境界、長尺資料での音ずれを聴取・確認する。フレーム尺検査は聴取確認の代用にならない。
 7. 原稿1枚だけの修正、tailだけの修正、途中のCtrl-C、再実行、ディスク容量不足を確認する。
-8. 開発ツールのないMacで配布物を検証する。Developer ID署名、公証、Gatekeeper、展開後のヘルパーの起動を確認する。
+8. `DeckReel.app` をFinderから起動し、オートメーション許可がDeckReelとして求められること、ターミナルに許可がなくても変換できることを確認する。
+9. 開発ツールのないMacで配布物を検証する。Developer ID署名、公証、Gatekeeper、展開後のヘルパーの起動を確認する。
 
 ### 制限
 

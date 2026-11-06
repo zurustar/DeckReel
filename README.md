@@ -1,8 +1,20 @@
 # DeckReel
 
-発表者ノート付きPowerPointから、VOICEVOXのナレーション付きMP4を作るmacOS用CLIです。
+発表者ノート付きPowerPointから、VOICEVOXのナレーション付きMP4を作るmacOS用アプリです。同じ処理をCLIでも使えます。
 
-## 使い方
+## アプリで使う
+
+1. Microsoft PowerPointと、利用する音声を含むVOICEVOXを用意し、VOICEVOXを起動します。
+2. `DeckReel.app` を起動し、PPTXをウインドウにドロップします。
+3. 話者・速度を選んで「動画を作成」を押します。
+
+初回は「DeckReelがMicrosoft PowerPointを操作しようとしています」と表示されるので許可してください。
+許可はDeckReelだけに与えられ、ターミナルに権限を付ける必要はありません。
+
+## CLIで使う
+
+CLIはターミナルから起動するため、オートメーションの許可は起動元のターミナル（ターミナル.app、iTerm、VS Codeなど）に対して求められます。
+そのターミナルで動く他のスクリプトもPowerPointを操作できるようになる点に注意してください。
 
 1. Microsoft PowerPointと、利用する音声を含むVOICEVOX EngineをMacに用意し、Engineを起動します。
 2. `deckreel --list-speakers` で話者・スタイルIDを確認します。
@@ -13,7 +25,7 @@
 ./deckreel presentation.pptx --speaker 3 --output output.mp4
 ```
 
-初回はmacOSの「プライバシーとセキュリティ → オートメーション」でPowerPointへの操作を許可してください。
+初回はmacOSの「プライバシーとセキュリティ → オートメーション」で、使っているターミナルにPowerPointの操作を許可してください。
 資料はローカルで処理します。Engineの既定接続先は `http://127.0.0.1:50021` です。
 
 ## 機能
@@ -50,11 +62,13 @@
 開発時だけmacOS 12以降、Go 1.23以降、Xcode Command Line Toolsが必要です。
 
 ```sh
-./scripts/build.sh
-./dist/deckreel --help
+make app        # dist/DeckReel.app（macOS 14以降）
+make build      # CLIのみ dist/deckreel
+make check      # gofmt・vet・テスト
+make help       # ターゲット一覧
 ```
 
-本体とAVFoundation/PDF描画用の補助実行物を1ファイルにまとめます。利用時はGo・Swift・Python・FFmpegのインストールは不要です。
+CLIは本体とAVFoundation/PDF描画用の補助実行物を1ファイルにまとめます。アプリはそのCLIを `Contents/Helpers` に同梱します。利用時はGo・Swift・Python・FFmpegのインストールは不要です。
 PowerPointとVOICEVOX Engineは別途必要です。補助実行物は初回にユーザーのキャッシュへ展開します。
 
 現在は初期実装です。CIはGoのテストとmacOSのネイティブ動画処理を対象にしていますが、PowerPoint実機操作、実際のVOICEVOXの聴取品質、配布用署名・公証は別途確認が必要です。

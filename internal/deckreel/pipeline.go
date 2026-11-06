@@ -34,6 +34,8 @@ type Pipeline struct {
 	Media    Media
 	Renderer Renderer
 	Log      io.Writer
+	// Progress, if set, is called before each slide is processed (current is 1-based).
+	Progress func(current, total int)
 }
 
 func (c *Config) Validate() error {
@@ -279,6 +281,9 @@ func (p Pipeline) Run(ctx context.Context, cfg Config) (err error) {
 			return e
 		}
 		p.log("Slide %d/%d (PowerPoint %d)", i+1, len(slides), s.Position)
+		if p.Progress != nil {
+			p.Progress(i+1, len(slides))
+		}
 		rel := filepath.Join("slides", s.ID)
 		dir, e := cache.path(rel)
 		if e != nil {

@@ -26,6 +26,7 @@ jobs:
       - run: ./scripts/build.sh
       - run: go test -race ./...
       - run: ./dist/deckreel --help
+      - run: ./scripts/build-app.sh
       - uses: actions/upload-artifact@v4
         with:
           name: deckreel-macos-development
