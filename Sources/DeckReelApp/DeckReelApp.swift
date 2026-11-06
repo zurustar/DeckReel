@@ -1,23 +1,10 @@
-// DeckReel macOS app: a SwiftUI front end for the bundled deckreel CLI.
-// The CLI runs as a child process so Apple Events to PowerPoint are attributed
-// to DeckReel.app (not to a terminal) by macOS privacy controls.
+// DeckReel macOS app: a SwiftUI front end that runs DeckReelCore in-process.
+// Apple Events to PowerPoint (sent via osascript) are attributed to DeckReel.app,
+// not to a terminal, by macOS privacy controls.
 import AppKit
+import DeckReelCore
 import SwiftUI
 import UniformTypeIdentifiers
-
-struct TalkStyle: Decodable, Identifiable, Hashable {
-    let id: Int
-    let speaker: String
-    let style: String
-}
-
-private struct CLIEvent: Decodable {
-    let type: String
-    let message: String?
-    let current: Int?
-    let total: Int?
-    let output: String?
-}
 
 enum RunState: Equatable {
     case idle
@@ -60,7 +47,7 @@ final class AppModel {
     var state: RunState = .idle
     var progress: (current: Int, total: Int)?
     var log: [String] = []
-    private var process: Process?
+    private var work: Task<URL, Error>?
 
     var outputExists: Bool {
         guard let outputURL else { return false }
@@ -71,61 +58,24 @@ final class AppModel {
             && (!outputExists || overwrite)
     }
 
-    /// The CLI bundled at Contents/Helpers/deckreel, or DECKREEL_CLI for development.
-    private var cliURL: URL {
-        if let override = ProcessInfo.processInfo.environment["DECKREEL_CLI"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
-        }
-        return Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/deckreel")
-    }
-
     func loadSpeakers() {
         loadingSpeakers = true
         speakerError = nil
-        let cli = cliURL
-        Task.detached {
-            let result = Self.runOnce(cli, ["--list-speakers", "--json"])
-            await MainActor.run {
-                self.loadingSpeakers = false
-                switch result {
-                case .success(let data):
-                    if let styles = try? JSONDecoder().decode([TalkStyle].self, from: data), !styles.isEmpty {
-                        self.styles = styles
-                        if !styles.contains(where: { $0.id == self.speakerID }) {
-                            self.speakerID = styles[0].id
-                        }
-                    } else {
-                        self.styles = []
-                        self.speakerError = "読み上げに使える話者が見つかりません。VOICEVOXの音声ライブラリを確認してください。"
-                    }
-                case .failure(let message):
-                    self.styles = []
-                    self.speakerError = message
+        Task {
+            defer { loadingSpeakers = false }
+            do {
+                let styles = try await Voicevox("http://127.0.0.1:50021").talkStyles()
+                self.styles = styles
+                if styles.isEmpty {
+                    speakerError = "読み上げに使える話者が見つかりません。VOICEVOXの音声ライブラリを確認してください。"
+                } else if !styles.contains(where: { $0.id == speakerID }) {
+                    speakerID = styles[0].id
                 }
+            } catch {
+                styles = []
+                speakerError = Self.friendly(error.localizedDescription)
             }
         }
-    }
-
-    private enum OnceResult: Sendable { case success(Data), failure(String) }
-
-    nonisolated private static func runOnce(_ cli: URL, _ args: [String]) -> OnceResult {
-        let p = Process()
-        p.executableURL = cli
-        p.arguments = args
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        do { try p.run() } catch {
-            return .failure("DeckReelの処理本体を起動できません: \(error.localizedDescription)")
-        }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        if p.terminationStatus != 0 {
-            let message = String(decoding: errData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            return .failure(Self.friendly(message))
-        }
-        return .success(data)
     }
 
     nonisolated static func friendly(_ message: String) -> String {
@@ -140,79 +90,41 @@ final class AppModel {
 
     func start() {
         guard canStart, let inputURL, let outputURL else { return }
-        var args = [inputURL.path, "--json", "--output", outputURL.path,
-                    "--speaker", String(speakerID), "--speed", String(format: "%.2f", speed)]
-        if skipEmptyNotes { args += ["--empty-notes", "skip"] }
-        if let dictionaryURL { args += ["--dictionary", dictionaryURL.path] }
-        if overwrite { args.append("--overwrite") }
-
-        let p = Process()
-        p.executableURL = cliURL
-        p.arguments = args
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = err
+        var cfg = Config(input: inputURL)
+        cfg.output = outputURL
+        cfg.speaker = speakerID
+        cfg.speed = (speed * 100).rounded() / 100
+        cfg.emptyNotes = skipEmptyNotes ? .skip : .silence
+        cfg.dictionary = dictionaryURL
+        cfg.overwrite = overwrite
 
         log = []
         progress = nil
         state = .running
-        var stdoutBuffer = Data()
-        var finalEvent: CLIEvent?
-        var stderrText = ""
-
-        out.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            DispatchQueue.main.async {
-                guard let self else { return }
-                stdoutBuffer.append(chunk)
-                while let nl = stdoutBuffer.firstIndex(of: 0x0A) {
-                    let line = stdoutBuffer[stdoutBuffer.startIndex..<nl]
-                    stdoutBuffer.removeSubrange(stdoutBuffer.startIndex...nl)
-                    guard let ev = try? JSONDecoder().decode(CLIEvent.self, from: Data(line)) else { continue }
-                    switch ev.type {
-                    case "log": self.log.append(ev.message ?? "")
-                    case "progress":
-                        if let c = ev.current, let t = ev.total { self.progress = (c, t) }
-                    case "done", "error": finalEvent = ev
-                    default: break
-                    }
-                }
+        var pipeline = Pipeline()
+        pipeline.log = { line in Task { @MainActor [weak self] in self?.log.append(line) } }
+        pipeline.progress = { current, total in Task { @MainActor [weak self] in self?.progress = (current, total) } }
+        // The pipeline does blocking media work; keep it off the main actor.
+        let work = Task.detached { try await pipeline.run(cfg) }
+        self.work = work
+        Task {
+            let result = await work.result
+            // Let queued log lines land before showing the result.
+            await Task.yield()
+            switch result {
+            case .success(let url): state = .finished(url)
+            case .failure(let error) where error is CancellationError: state = .cancelled
+            case .failure(let error): state = state == .cancelled ? .cancelled : .failed(Self.friendly(error.localizedDescription))
             }
-        }
-        err.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            DispatchQueue.main.async { stderrText += String(decoding: chunk, as: UTF8.self) }
-        }
-        p.terminationHandler = { [weak self] proc in
-            let status = proc.terminationStatus
-            // Drain remaining output after the readability handlers have run.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                out.fileHandleForReading.readabilityHandler = nil
-                err.fileHandleForReading.readabilityHandler = nil
-                guard let self else { return }
-                self.process = nil
-                if status == 0, let path = finalEvent?.output {
-                    self.state = .finished(URL(fileURLWithPath: path))
-                } else if status == 130 || self.state == .cancelled {
-                    self.state = .cancelled
-                } else {
-                    let message = finalEvent?.message ?? stderrText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    self.state = .failed(Self.friendly(message))
-                }
-            }
-        }
-        do {
-            try p.run()
-            process = p
-        } catch {
-            state = .failed("DeckReelの処理本体を起動できません: \(error.localizedDescription)")
+            self.work = nil
         }
     }
 
     func cancel() {
-        guard let process, process.isRunning else { return }
+        guard let work else { return }
         state = .cancelled
-        process.interrupt()  // SIGINT: the CLI stops cleanly and keeps finished cache entries.
+        // Finished stages stay cached; the running one is marked interrupted.
+        work.cancel()
     }
 }
 

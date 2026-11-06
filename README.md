@@ -10,10 +10,10 @@
 
 | 用途 | 必要なもの |
 | --- | --- |
-| 実行 | macOS 14以降（CLIのみなら12以降）、Microsoft PowerPoint、[VOICEVOX](https://voicevox.hiroshiba.jp/)（またはVOICEVOX Engine） |
-| ビルド | Xcode Command Line Tools、Go 1.23以降 |
+| 実行 | macOS 14以降、Microsoft PowerPoint、[VOICEVOX](https://voicevox.hiroshiba.jp/)（またはVOICEVOX Engine） |
+| ビルド | Xcode Command Line Tools（Xcode本体は不要） |
 
-Xcode本体は不要です。Apple Silicon・IntelのどちらのMacでもビルドできます（ビルドしたMacのアーキテクチャ向けになります）。
+Apple Silicon・IntelのどちらのMacでもビルドできます（ビルドしたMacのアーキテクチャ向けになります）。外部ライブラリは使わないので、ビルド時のネット接続も不要です。
 
 ## インストール（ソースからビルド）
 
@@ -23,25 +23,18 @@ Xcode本体は不要です。Apple Silicon・IntelのどちらのMacでもビル
    xcode-select --install
    ```
 
-2. Goを入れます。[go.dev/dl](https://go.dev/dl/) のインストーラーか、Homebrewを使います。
-
-   ```sh
-   brew install go
-   go version   # go1.23 以降であること
-   ```
-
-3. ソースコードを取得し、リリース版をビルドします。
+2. ソースコードを取得し、リリース版をビルドします。
 
    ```sh
    git clone https://github.com/zurustar/DeckReel.git
    cd DeckReel
-   git checkout v0.1.0
+   git checkout v0.2.0
    make app
    ```
 
-   `dist/DeckReel.app` ができます。CLIだけ使う場合は `make build` で `dist/deckreel` ができます。
+   `dist/DeckReel.app` ができます。
 
-4. アプリをアプリケーションフォルダにコピーします。
+3. アプリをアプリケーションフォルダにコピーします。
 
    ```sh
    ditto dist/DeckReel.app /Applications/DeckReel.app
@@ -75,7 +68,7 @@ ditto dist/DeckReel.app /Applications/DeckReel.app
 CLIはターミナルから起動するため、オートメーションの許可は起動元のターミナル（ターミナル.app、iTerm、VS Codeなど）に対して求められます。
 そのターミナルで動く他のスクリプトもPowerPointを操作できるようになる点に注意してください。
 
-1. `make build` でビルドし、`dist/deckreel` を使います（`PATH` の通った場所にコピーしてもかまいません）。
+1. `make cli` でビルドし、`dist/deckreel` を使います（`PATH` の通った場所にコピーしてもかまいません）。
 2. VOICEVOXまたはVOICEVOX Engineを起動し、`deckreel --list-speakers` で話者・スタイルIDを確認します。
 3. 原稿を発表者ノートに記載したPPTXを指定します。以下の `3` は例なので、使いたいIDに置き換えてください。
 
@@ -119,18 +112,17 @@ CLIはターミナルから起動するため、オートメーションの許�
 ## 開発
 
 ```sh
-make app        # dist/DeckReel.app（macOS 14以降）
+make app        # アプリ dist/DeckReel.app（macOS 14以降）
+make cli        # CLI dist/deckreel
 make run-app    # ビルドして起動
-make build      # CLIのみ dist/deckreel
-make check      # gofmt・vet・テスト（CIのGoジョブ相当）
+make test       # テスト（Swift Testing）
 make help       # ターゲット一覧
 ```
 
-CLIは本体とAVFoundation/PDF描画用の補助実行物を1ファイルにまとめます。アプリはそのCLIを `Contents/Helpers` に同梱します。
-ビルド後の実行にGo・Swift・Python・FFmpegは不要です。補助実行物は初回にユーザーのキャッシュへ展開します。
+Swiftだけで書かれたSwift Package Managerのパッケージです。アプリもCLIも1つの実行ファイルで、動画処理はmacOS標準のAVFoundationで行います。
 署名は既定でアドホックです。`DECKREEL_SIGN_IDENTITY` に証明書の名前を指定すると、その証明書で署名します（公証は自動化していません）。
 
-現在は初期版（v0.1.0）です。CIはGoのテスト、macOSのネイティブ動画処理、アプリのビルドを対象にしています。
+v0.2.0でGoからSwiftに移行しました。以前の作業フォルダのキャッシュは自動で作り直されます。
 PowerPoint実機操作、VOICEVOXの聴取品質、長尺資料での確認は継続中です。
 
 [要件](docs/requirements.md)・[設計](docs/design.md)・[開発と検証](docs/development.md)を参照してください。

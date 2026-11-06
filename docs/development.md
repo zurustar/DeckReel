@@ -2,22 +2,24 @@
 
 ## 構成
 
-GoのCLIと `internal/deckreel` がPPTX解析・原稿処理・VOICEVOX接続・工程管理を担当します。
-`internal/native` は埋め込んだmacOS用ヘルパーを検証・展開して呼び出します。
-`native/main.swift` がCoreGraphicsによるPDF描画とAVFoundationによるH.264/AAC生成・パススルー結合を担当します。
-`app/DeckReelApp.swift` がSwiftUIの画面で、同梱した `deckreel` を `--json` 付きの子プロセスとして起動します（[設計 10章](design.md)）。
-`DECKREEL_CLI` に別のCLIのパスを指定すると、開発中のCLIを使えます。
-ヘルパーのコンパイルは開発時のみ。利用者のMacでSwiftを実行・コンパイルすることはありません。
+Swift Package Managerのパッケージです（[設計 10章](design.md)）。
+
+| ターゲット | 内容 |
+| --- | --- |
+| `DeckReelCore` | PPTX解析・原稿処理・VOICEVOX接続・PowerPoint操作・AVFoundationによる動画処理・キャッシュ・工程管理 |
+| `DeckReelApp` | SwiftUIの画面。`DeckReelCore` を直接呼び出す |
+| `DeckReelCLI` | CLI。`DeckReelCore` を直接呼び出す |
+| `DeckReelCoreTests` | Swift Testingのテスト |
 
 ## テスト
 
 ```sh
-go test -race ./...
-go vet ./...
+make test
 ```
 
-Macでは先に `./scripts/build.sh` でヘルパーを生成してください。
-macOS専用テストはPDFを生成し、PNG化、短い動画の生成、24クリップのパススルー結合と尺検査を行います。
+Command Line Toolsでは `swift test` だけだとSwift Testingのマクロが見つからないため、`make test` を使ってください（Xcodeがあれば `swift test` でも動きます）。
+テストは人工のPPTX（無圧縮・Deflate両方のZIP）、ダミーのVOICEVOX（`URLProtocol`）、差し替えたPowerPoint・動画処理で、差分再生成・再開・改ざん検出・出力保護を確認します。
+動画処理のテストはPDFを生成し、1920×1080への拡大、短い動画の生成、24クリップのパススルー結合と尺検査を行います。
 PowerPointやVOICEVOXのインストールをCIに要求しません。その代わり以下の実機項目はCIの成功だけで完了と判断しません。
 
 ### 実機で確認すること
@@ -30,7 +32,7 @@ PowerPointやVOICEVOXのインストールをCIに要求しません。その代
 6. 音声の末尾、各スライド境界、長尺資料での音ずれを聴取・確認する。フレーム尺検査は聴取確認の代用にならない。
 7. 原稿1枚だけの修正、tailだけの修正、途中のCtrl-C、再実行、ディスク容量不足を確認する。
 8. `DeckReel.app` をFinderから起動し、オートメーション許可がDeckReelとして求められること、ターミナルに許可がなくても変換できることを確認する。
-9. 開発ツールのないMacで配布物を検証する。Developer ID署名、公証、Gatekeeper、展開後のヘルパーの起動を確認する。
+9. Developer ID署名・公証をした場合は、開発ツールのないMacでGatekeeperと起動を確認する。
 
 ### 制限
 
@@ -56,6 +58,6 @@ PowerPointやVOICEVOXのインストールをCIに要求しません。その代
 
 ## 正式リリースまで
 
-ネイティブヘルパーの採用によりFFmpegを再配布しません。
+動画処理はAVFoundationで行うため、FFmpegを再配布しません。
 `DECKREEL_SIGN_IDENTITY` を指定するとビルドスクリプトは指定IDで署名しますが、公証まで自動化するものではありません。
 PowerPoint自動操作・VOICEVOX・長尺品質・署名と公証の実機確認を終えるまでは開発版として扱います。
