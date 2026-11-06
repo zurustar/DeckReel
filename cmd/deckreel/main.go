@@ -51,7 +51,7 @@ func run(ctx context.Context, args []string, out, errout io.Writer) int {
 		return 2
 	}
 	if *version {
-		fmt.Fprintln(out, "DeckReel 0.1.0-dev")
+		fmt.Fprintln(out, "DeckReel 0.1.0")
 		return 0
 	}
 	if *list {

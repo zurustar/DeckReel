@@ -2,6 +2,65 @@
 
 発表者ノート付きPowerPointから、VOICEVOXのナレーション付きMP4を作るmacOS用アプリです。同じ処理をCLIでも使えます。
 
+> [!NOTE]
+> DeckReelはビルド済みのアプリを配布していません（Apple Developer IDでの署名・公証をしていないため）。
+> 以下の手順で、お使いのMacでソースコードからビルドしてください。数分で終わります。
+
+## 必要なもの
+
+| 用途 | 必要なもの |
+| --- | --- |
+| 実行 | macOS 14以降（CLIのみなら12以降）、Microsoft PowerPoint、[VOICEVOX](https://voicevox.hiroshiba.jp/)（またはVOICEVOX Engine） |
+| ビルド | Xcode Command Line Tools、Go 1.23以降 |
+
+Xcode本体は不要です。Apple Silicon・IntelのどちらのMacでもビルドできます（ビルドしたMacのアーキテクチャ向けになります）。
+
+## インストール（ソースからビルド）
+
+1. Xcode Command Line Toolsを入れます（入っていれば不要）。
+
+   ```sh
+   xcode-select --install
+   ```
+
+2. Goを入れます。[go.dev/dl](https://go.dev/dl/) のインストーラーか、Homebrewを使います。
+
+   ```sh
+   brew install go
+   go version   # go1.23 以降であること
+   ```
+
+3. ソースコードを取得し、リリース版をビルドします。
+
+   ```sh
+   git clone https://github.com/zurustar/DeckReel.git
+   cd DeckReel
+   git checkout v0.1.0
+   make app
+   ```
+
+   `dist/DeckReel.app` ができます。CLIだけ使う場合は `make build` で `dist/deckreel` ができます。
+
+4. アプリをアプリケーションフォルダにコピーします。
+
+   ```sh
+   ditto dist/DeckReel.app /Applications/DeckReel.app
+   ```
+
+自分でビルドしたアプリはダウンロード扱いにならないため、Gatekeeperにブロックされずに起動できます。
+ビルドのたびに署名の識別情報が変わるため、更新後の初回はPowerPointの操作許可を再度求められることがあります。
+
+### 更新
+
+```sh
+cd DeckReel
+git fetch --tags
+git checkout <新しいバージョンのタグ>
+make app
+rm -rf /Applications/DeckReel.app   # 古いファイルが残ると署名が壊れるため、置き換える
+ditto dist/DeckReel.app /Applications/DeckReel.app
+```
+
 ## アプリで使う
 
 1. Microsoft PowerPointと、利用する音声を含むVOICEVOXを用意し、VOICEVOXを起動します。
@@ -16,8 +75,8 @@
 CLIはターミナルから起動するため、オートメーションの許可は起動元のターミナル（ターミナル.app、iTerm、VS Codeなど）に対して求められます。
 そのターミナルで動く他のスクリプトもPowerPointを操作できるようになる点に注意してください。
 
-1. Microsoft PowerPointと、利用する音声を含むVOICEVOX EngineをMacに用意し、Engineを起動します。
-2. `deckreel --list-speakers` で話者・スタイルIDを確認します。
+1. `make build` でビルドし、`dist/deckreel` を使います（`PATH` の通った場所にコピーしてもかまいません）。
+2. VOICEVOXまたはVOICEVOX Engineを起動し、`deckreel --list-speakers` で話者・スタイルIDを確認します。
 3. 原稿を発表者ノートに記載したPPTXを指定します。以下の `3` は例なので、使いたいIDに置き換えてください。
 
 ```sh
@@ -57,21 +116,21 @@ CLIはターミナルから起動するため、オートメーションの許�
 再実行時も同じフォルダを使ってください。保存した原稿や音声はGitに登録しないでください。
 使う音声の利用規約・クレジットを確認してください。使用した音声情報とクレジット候補は作業フォルダの `voice.json` に保存されます。
 
-## ビルドと配布
-
-開発時だけmacOS 12以降、Go 1.23以降、Xcode Command Line Toolsが必要です。
+## 開発
 
 ```sh
 make app        # dist/DeckReel.app（macOS 14以降）
+make run-app    # ビルドして起動
 make build      # CLIのみ dist/deckreel
-make check      # gofmt・vet・テスト
+make check      # gofmt・vet・テスト（CIのGoジョブ相当）
 make help       # ターゲット一覧
 ```
 
-CLIは本体とAVFoundation/PDF描画用の補助実行物を1ファイルにまとめます。アプリはそのCLIを `Contents/Helpers` に同梱します。利用時はGo・Swift・Python・FFmpegのインストールは不要です。
-PowerPointとVOICEVOX Engineは別途必要です。補助実行物は初回にユーザーのキャッシュへ展開します。
+CLIは本体とAVFoundation/PDF描画用の補助実行物を1ファイルにまとめます。アプリはそのCLIを `Contents/Helpers` に同梱します。
+ビルド後の実行にGo・Swift・Python・FFmpegは不要です。補助実行物は初回にユーザーのキャッシュへ展開します。
+署名は既定でアドホックです。`DECKREEL_SIGN_IDENTITY` に証明書の名前を指定すると、その証明書で署名します（公証は自動化していません）。
 
-現在は初期実装です。CIはGoのテストとmacOSのネイティブ動画処理を対象にしていますが、PowerPoint実機操作、実際のVOICEVOXの聴取品質、配布用署名・公証は別途確認が必要です。
-開発ビルドの署名はアドホックで、正式リリースとしての配布検証は未完了です。
+現在は初期版（v0.1.0）です。CIはGoのテスト、macOSのネイティブ動画処理、アプリのビルドを対象にしています。
+PowerPoint実機操作、VOICEVOXの聴取品質、長尺資料での確認は継続中です。
 
 [要件](docs/requirements.md)・[設計](docs/design.md)・[開発と検証](docs/development.md)を参照してください。
