@@ -182,7 +182,10 @@ final class FakeVoice: @unchecked Sendable {
     var receivedTexts: [String] = []
     var formatErrors = 0
 
-    lazy var url: String = MockVoicevox.register { [unowned self] request, body in self.handle(request, body) }
+    // weak: a cancelled request can still reach the handler after the test (and this object) is gone.
+    lazy var url: String = MockVoicevox.register { [weak self] request, body in
+        self?.handle(request, body) ?? (503, Data())
+    }
 
     private func handle(_ request: URLRequest, _ body: Data) -> (status: Int, body: Data) {
         let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
