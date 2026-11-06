@@ -6,17 +6,17 @@
 
 ## 1. 設計方針
 
-Go製CLIを処理全体の制御役とし、PPTXの解析、スライドごとの状態管理、外部機能の呼び出しを分離する。
+Swiftの処理本体（`DeckReelCore`）が処理全体を制御し、PPTXの解析、スライドごとの状態管理、外部機能の呼び出しを分離する。SwiftUIアプリとCLIはどちらもこの処理本体を直接呼び出す。
 処理は逐次実行する。画像化はプレゼンテーション全体の書き出しになってもよいが、音声と動画の再利用はスライド単位で判断する。
 
 | 項目 | 設計方針 | 状態 |
 | --- | --- | --- |
-| 本体 | Go、標準ライブラリを中心に構成 | 採用方針 |
+| 本体 | Swift（Swift Package Manager）。外部ライブラリなし | 採用方針 |
 | ノート抽出 | ZIP/XMLを直接読み、PowerPointの画面操作から分離 | 採用方針 |
 | スライド描画 | macOS版PowerPointを自動操作 | 実機検証が必要 |
 | 音声 | ローカルのVOICEVOX EngineへHTTP接続 | 採用方針。対応バージョン・品質を検証 |
-| 動画処理 | macOS標準のAVFoundationを使う埋め込みヘルパー | 初期実装。長尺の実機確認が必要 |
-| 画面 | SwiftUI製のmacOSアプリ。Goの処理本体を子プロセスとして同梱 | 初期実装。macOS 14以降 |
+| 動画処理 | macOS標準のAVFoundation・CoreGraphicsを処理本体から直接使う | 初期実装。長尺の実機確認が必要 |
+| 画面 | SwiftUI製のmacOSアプリ。処理本体をリンクした1つの実行ファイル | 初期実装。macOS 14以降 |
 | 配布 | `DeckReel.app` を `.dmg`/`.zip` で配布。CLI単体の1ファイル配布も継続 | 署名・公証・ライセンス等を検証 |
 
 Webサービス、並列ジョブ、アニメーション再現、クラウド音声連携は初期設計に含めない。
@@ -45,17 +45,17 @@ flowchart TD
 
 | モジュール候補 | 入力 | 出力・責務 |
 | --- | --- | --- |
-| `cmd/deckreel` | 引数 | 設定検証、進捗表示、終了コード |
-| `internal/pptx` | 入力のスナップショット | 順序、安定ID、表示可否、サイズ、ノート本文 |
-| `internal/powerpoint` | PPTX、対象スライド | 元スライドIDに対応した画像一覧 |
-| `internal/script` | ノート、辞書 | 正規化した読み上げ原稿 |
-| `internal/speech` | 原稿、声、速度 | 音声、実測長、エンジン識別情報 |
-| `internal/media` | 画像、音声、動画設定 | クリップ生成、検査、結合 |
-| `internal/cache` | 工程キー、成果物 | ハッシュ検証、Manifestの保存、排他制御 |
-| `internal/pipeline` | 設定と上記機能 | 計画、実行、再開、キャンセル |
-| `internal/runtime` | 埋め込みリソース | 補助実行物の検証と展開 |
+| `Sources/DeckReelApp` | 画面操作 | SwiftUIの画面、進捗表示、中止 |
+| `Sources/DeckReelCLI` | 引数 | 設定検証、進捗表示、終了コード |
+| `DeckReelCore/ZIP.swift`・`XML.swift`・`PPTX.swift` | 入力のスナップショット | ZIPの読み込み（上限・CRC検査付き）、名前空間付きXML、順序、安定ID、表示可否、ノート本文 |
+| `DeckReelCore/PowerPoint.swift` | PPTX | PowerPointによるPDF書き出し |
+| `DeckReelCore/Script.swift` | ノート、辞書 | 正規化した読み上げ原稿 |
+| `DeckReelCore/Voicevox.swift`・`WAV.swift` | 原稿、声、速度 | 音声、実測長、エンジン識別情報 |
+| `DeckReelCore/Media.swift` | PDF、画像、音声 | PDF描画、クリップ生成、検査、結合 |
+| `DeckReelCore/Cache.swift` | 工程キー、成果物 | ハッシュ検証、Manifestの保存、排他制御 |
+| `DeckReelCore/Pipeline.swift` | 設定と上記機能 | 計画、実行、再開、キャンセル |
 
-アダプターはGoの小さなインターフェースで抽象化する。プロセス起動は引数配列で行い、シェル文字列の組み立てに資料名や台本を埋め込まない。
+PowerPointと動画処理はSwiftのプロトコル（`Renderer`・`Media`）で抽象化し、テストでは差し替える。プロセス起動は引数配列で行い、シェル文字列の組み立てに資料名や台本を埋め込まない。
 
 ## 3. CLI案
 
@@ -154,7 +154,7 @@ Engineのユーザー辞書を参照する場合は辞書内容のハッシュ�
 ## 6. 動画と時間の扱い
 
 動画処理はAVFoundationのAVAssetWriterによるH.264/AACエンコードと、AVAssetExportSessionのパススルー結合を使う。
-PDF描画はCoreGraphicsで行う。Swift製ヘルパーをビルド時にコンパイル・署名してGoバイナリに埋め込む。利用時はSwiftやFFmpegの個別導入を要求しない。
+PDF描画はCoreGraphicsで行う。いずれも処理本体から直接呼び出し、別の実行ファイルやFFmpegを必要としない。
 利用できない機能は明確なエラーにし、実機で長尺と音声境界を確認する。
 未検証のエンコーダーへ自動で切り替えない。
 
@@ -228,25 +228,17 @@ tailだけの変更は音声を再生成しない。skip設定で対象外にな
 
 終了コードは成功0、引数・設定不正2、実行失敗1、キャンセル130を候補とする。
 
-## 9. 単一バイナリ配布
+## 9. 配布
 
-初期ターゲット候補は `darwin/arm64`。
-DeckReel本体は `deckreel` 1ファイルで配布し、開発ツールやHomebrewのインストールを前提にしない。
-ただしPowerPointに加え、VOICEVOX Engineの別途インストール・起動を必須とする。Engine・音声モデルは初期版のバイナリに同梱しない。
-動画処理用の補助実行物については、以下の同梱方針を検証する。
+対象は `darwin/arm64` と `darwin/x86_64`（ビルドしたMacのアーキテクチャ）。macOS 14以降。
+`DeckReel.app` は実行ファイル1つと `Info.plist` だけで構成し、補助実行物の埋め込みや実行時の展開を行わない。
+CLIの `deckreel` も1つの実行ファイルとする。
+PowerPointに加え、VOICEVOX Engineの別途インストール・起動を必須とする。Engine・音声モデルは同梱しない。
 
-補助実行物が必要な場合は以下の順序で検証する。
-
-1. PowerPointとmacOS標準機能で賄える範囲を確認する。
-2. 不足分について、依存先の動的ライブラリまで含め追加インストール不要なビルドを用意する。
-3. 補助実行物を署名してからGoの埋め込みリソースに含め、本体も署名する。
-4. 初回実行時にユーザー専用キャッシュのバージョン・アーキテクチャ別ディレクトリへ展開し、埋め込みハッシュを確認して使用する。
-5. Gatekeeper、隔離属性、公証、展開後の補助実行物の起動を、開発環境のないMacで検証する。
-
-ライセンス文書と必要なソース提供・再リンク等の義務は採用する構成ごとに確認する。LGPL/GPLの扱いを「FFmpegだから同じ」と決めつけない。
-単一ファイルの目標はライセンス上の必要物を省略する理由にしない。
-実行時のインターネット取得は行わない。Intel、Universal Binary、最低OS版、配布サイズの上限は未決定。
-検証を通らない場合は配布形式やメディア実装を再検討し、追加インストール要件を黙って導入しない。
+Developer ID署名と公証を行うまでは、ビルド済みの実行ファイルを配布しない。
+利用者は自分のMacでソースからビルドする（Command Line Toolsのみ必要。外部ライブラリとビルド時のネット接続は不要）。
+自分でビルドしたアプリには隔離属性が付かないため、Gatekeeperの確認を経ずに起動できる。
+実行時のインターネット取得は行わない。Universal Binary、配布サイズの上限は未決定。
 
 ## 10. macOSアプリ
 
@@ -254,30 +246,39 @@ DeckReel本体は `deckreel` 1ファイルで配布し、開発ツールやHomeb
 
 PowerPointの自動操作に必要なオートメーション許可を、ターミナルではなくDeckReel自身に与える。
 macOSはApple Eventの送信元を起動元のアプリ（responsible process）として記録するため、CLIをターミナルから使うとターミナル全体に許可が及ぶ。
-LaunchServicesから起動した `DeckReel.app` の子プロセスが送るApple Eventは、DeckReel.appに帰属する。
+LaunchServicesから起動した `DeckReel.app` と、その子プロセスの `osascript` が送るApple Eventは、DeckReel.appに帰属する。
 
 ### 構成
 
 ```text
-DeckReel.app/Contents/
-  Info.plist            バンドルID io.github.zurustar.DeckReel、NSAppleEventsUsageDescription
-  MacOS/DeckReel        SwiftUIアプリ（app/DeckReelApp.swift）
-  Helpers/deckreel      Goの処理本体（CLIと同一。ネイティブヘルパーを埋め込み）
+Package.swift
+Sources/
+  DeckReelCore/   処理本体（ライブラリ）
+  DeckReelApp/    SwiftUIアプリ → DeckReel.app/Contents/MacOS/DeckReel
+  DeckReelCLI/    CLI → dist/deckreel
+Tests/DeckReelCoreTests/   Swift Testing
+app/Info.plist, app/DeckReel.entitlements
 ```
 
-- アプリは処理本体を `--json` 付きで起動する。話者一覧はJSON配列、変換中は1行1件のJSON（`log`・`progress`・`done`・`error`）を標準出力に出す。
-- 中止はSIGINTで送り、CLIと同じくキャンセル（終了コード130）として完了済みのキャッシュを残す。
-- 入力・出力・話者・速度・空ノート・辞書をGUIで指定する。既存の出力は、保存パネルでの置換確認か明示的なトグルがある場合だけ `--overwrite` を渡す。
+- アプリは `DeckReelCore` の `Pipeline` を同じプロセス内で直接呼び出す。ログと進捗はコールバックで受け取り、中止はSwiftのタスクのキャンセルで伝える。
+- 完了済みの工程はキャッシュに残り、実行中の工程は `interrupted` として記録する（CLIのCtrl-Cと同じ）。
+- 入力・出力・話者・速度・空ノート・辞書をGUIで指定する。既存の出力は、保存パネルでの置換確認か明示的なトグルがある場合だけ上書きする。
+- PowerPointは `/usr/bin/osascript` で操作する。`NSAppleScript` はメインスレッドでの実行が前提で、書き出しの間画面が固まるため使わない。`osascript` はOS標準のコマンドなので、アプリは1つの実行ファイルのまま。
 - Hardened Runtimeで署名し、`com.apple.security.automation.apple-events` を付与する。App Sandboxは使わない（PowerPointへのApple Eventと任意の場所の資料・出力の扱いが複雑になるため）。
-- Command Line Toolsだけでビルドできるよう、`swiftc` で直接コンパイルしXcodeプロジェクトを持たない。Command Line ToolsにはSwiftUIのマクロ実装がないため `@State` を使わず、状態は `@Observable` のモデルに置く。
 
-### 段階的な統合
+### Command Line Toolsでのビルドの制約
 
-1. 現在：SwiftUIアプリ＋同梱CLI＋CLIに埋め込んだネイティブヘルパー（初回にキャッシュへ展開）。
-2. ネイティブヘルパーの処理をアプリ本体に取り込み、`.app` 内では展開を不要にする。
-3. Goの処理本体を `-buildmode=c-archive` でアプリにリンクし、`.app` 内の実行ファイルを1つにする。
+- Xcodeプロジェクトを持たず、Swift Package Managerでビルドする。`.app` の組み立てと署名は `scripts/build-app.sh`、CLIは `scripts/build-cli.sh` が行う（`make app`・`make cli`）。
+- Command Line ToolsにはSwiftUIのマクロ実装がないため `@State` を使わず、状態は `@Observable` のモデルに置く。
+- Command Line ToolsにはXCTestがないため、テストはSwift Testingで書く。Swift Testingのマクロ実装は同梱されているが自動では見つからないため、`make test` が読み込み先（`-plugin-path`）を指定する。
+- ZIPの読み込みは標準のCompressionフレームワークで自作する（PPTXの読み取りに必要な無圧縮・Deflateのみ）。外部ライブラリを使わないことで、ビルド時のネット接続を不要にする。
 
-アドホック署名は毎回識別情報が変わるため、開発中は再ビルドのたびに許可を求められることがある。配布ではDeveloper ID署名で識別情報を固定する。
+アドホック署名は毎回識別情報が変わるため、再ビルドのたびに許可を求められることがある。Developer ID署名で識別情報を固定する。
+
+### Go版からの移行
+
+v0.1.0はGoの処理本体とSwiftの補助実行物を組み合わせていた。v0.2.0でSwiftに統一した。
+キャッシュの判定方法が変わったため、Manifestの版を2に上げた。Go版の作業フォルダは自動で作り直される（作業フォルダの場所は同じ）。
 
 ## 11. 検証計画と要件対応
 
@@ -295,14 +296,14 @@ DeckReel.app/Contents/
 | 配布 | 開発ツールなしの対象Macで起動・初回権限・補助実行物・署名を確認 |
 | アプリの権限 | オートメーション許可がDeckReel.appとして求められ、ターミナルに許可がなくても変換できることを確認 |
 
-Mac依存部分はアダプターを差し替え、Go上で処理計画とキャッシュ規則を検証できるようにする。
+Mac依存部分はプロトコルの実装を差し替え、処理計画とキャッシュ規則をテストで検証できるようにする。
 実機が必要な項目をモックの成功だけで完了扱いにしない。
 
 ## 12. 実装前に解決する順序
 
 1. PowerPointの書き出しと元スライドIDの対応、既存のユーザー資料を妨げない操作を検証する。
 2. ローカルVOICEVOX Engineで話者・速度・尺を取得し、日本語の解説品質と対応APIを確認する。
-3. H.264/AACクリップの結合品質と、アプリへの同梱・署名・ライセンスを検証する。
+3. H.264/AACクリップの結合品質と、アプリの署名・ライセンスを検証する。
 4. 上記の成立後にアダプターとPipeline Runnerを実装する。
 5. 差分再生成・再開・出力保護を組み込み、要件の完了条件をMac実機で確認する。
 
