@@ -57,7 +57,10 @@ func ReadDeck(filename string) (Deck, error) {
 		}
 	}
 	// Attribute namespaces matter: both p:sldId/@id and r:id have local name id.
+	// Only presentation/sldIdLst/sldId lists slides. Sections (p14:sectionLst in
+	// extLst) also contain sldId elements without r:id, which must be ignored.
 	dec := xml.NewDecoder(strings.NewReader(string(b)))
+	var stack []string
 	for {
 		t, e := dec.Token()
 		if e == io.EOF {
@@ -66,8 +69,16 @@ func ReadDeck(filename string) (Deck, error) {
 		if e != nil {
 			return Deck{}, e
 		}
+		if _, ok := t.(xml.EndElement); ok && len(stack) > 0 {
+			stack = stack[:len(stack)-1]
+			continue
+		}
 		s, ok := t.(xml.StartElement)
-		if !ok || s.Name.Local != "sldId" {
+		if !ok {
+			continue
+		}
+		stack = append(stack, s.Name.Local)
+		if len(stack) != 3 || stack[0] != "presentation" || stack[1] != "sldIdLst" || s.Name.Local != "sldId" {
 			continue
 		}
 		var id, rid string

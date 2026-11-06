@@ -45,7 +45,12 @@ func render(_ pdf: String, _ directory: String) throws {
                           width: sourceWidth*scale, height: sourceHeight*scale)
         // A white slide background inside a black letterbox also supports PDFs without an explicit background.
         context.setFillColor(NSColor.white.cgColor); context.fill(rect)
-        context.concatenate(page.getDrawingTransform(.cropBox, rect: rect, rotate: 0, preserveAspectRatio: true))
+        // getDrawingTransform only scales down, never up, so scale explicitly and use it
+        // just for crop-box origin and page rotation at the page's own size.
+        context.translateBy(x: rect.minX, y: rect.minY)
+        context.scaleBy(x: scale, y: scale)
+        context.concatenate(page.getDrawingTransform(.cropBox, rect: CGRect(x: 0, y: 0, width: sourceWidth, height: sourceHeight),
+                                                     rotate: 0, preserveAspectRatio: true))
         context.drawPDFPage(page)
         guard let image = context.makeImage() else { try fail("cannot render page") }
         let bitmap = NSBitmapImageRep(cgImage: image)

@@ -90,6 +90,13 @@ func (v *Voicevox) request(ctx context.Context, method, endpoint string, query u
 	}
 	return b, nil
 }
+
+// IsTalkStyle reports whether a style type can be used for text-to-speech via
+// /audio_query and /synthesis. Engine 0.26+ reports talk styles as "streaming_talk".
+func IsTalkStyle(t string) bool {
+	return t == "" || t == "talk" || t == "streaming_talk"
+}
+
 func (v *Voicevox) Speakers(ctx context.Context) ([]Speaker, error) {
 	b, e := v.request(ctx, "GET", "/speakers", nil, nil)
 	if e != nil {
@@ -118,7 +125,7 @@ func (v *Voicevox) Info(ctx context.Context, id int, revision string) (VoiceInfo
 	found := false
 	for _, s := range speakers {
 		for _, style := range s.Styles {
-			if style.ID == id && (style.Type == "" || style.Type == "talk") {
+			if style.ID == id && IsTalkStyle(style.Type) {
 				info = VoiceInfo{EngineVersion: ver, Speaker: s, Style: style, Credit: "VOICEVOX:" + s.Name}
 				found = true
 			}
