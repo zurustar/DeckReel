@@ -63,6 +63,13 @@ func TestNativeMedia(t *testing.T) {
 	if red < 60000 || green > 1000 || blue > 1000 {
 		t.Fatal("slide pixels changed")
 	}
+	// A 640x480 page must be scaled up to fill 1440x1080 (x 240..1680), not drawn at its native size.
+	for _, pt := range [][2]int{{250, 540}, {1670, 540}, {960, 5}, {960, 1074}} {
+		red, green, blue, _ = picture.At(pt[0], pt[1]).RGBA()
+		if red < 60000 || green > 1000 || blue > 1000 {
+			t.Fatalf("slide not scaled to fill the frame at %v", pt)
+		}
+	}
 	red, green, blue, _ = picture.At(0, 540).RGBA()
 	if red != 0 || green != 0 || blue != 0 {
 		t.Fatal("4:3 letterbox missing")

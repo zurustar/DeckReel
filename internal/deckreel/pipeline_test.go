@@ -21,6 +21,10 @@ type fixtureSlide struct {
 
 func fixture(t *testing.T, path string, slides []fixtureSlide) {
 	t.Helper()
+	fixtureWithExt(t, path, slides, "")
+}
+func fixtureWithExt(t *testing.T, path string, slides []fixtureSlide, ext string) {
+	t.Helper()
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
 	put := func(n, s string) {
@@ -44,7 +48,7 @@ func fixture(t *testing.T, path string, slides []fixtureSlide) {
 		put("ppt/slides/_rels/"+s.file+".xml.rels", `<Relationships><Relationship Id="n" Type="x/notesSlide" Target="../notesSlides/`+s.file+`.xml"/></Relationships>`)
 		put("ppt/notesSlides/"+s.file+".xml", `<p:notes xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="sldNum"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>NOT SCRIPT</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>`+s.notes+`</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>`)
 	}
-	put("ppt/presentation.xml", `<p:presentation xmlns:p="p" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst>`+ids.String()+`</p:sldIdLst></p:presentation>`)
+	put("ppt/presentation.xml", `<p:presentation xmlns:p="p" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst>`+ids.String()+`</p:sldIdLst>`+ext+`</p:presentation>`)
 	put("ppt/_rels/presentation.xml.rels", `<Relationships>`+rels.String()+`</Relationships>`)
 	if e := z.Close(); e != nil {
 		t.Fatal(e)
@@ -61,6 +65,18 @@ func TestPPTXOrderNotesHidden(t *testing.T) {
 		t.Fatal(e)
 	}
 	if len(d.Slides) != 2 || d.Slides[0].ID != "300" || d.Slides[0].Notes != "First" || !d.Slides[1].Hidden {
+		t.Fatalf("%+v", d)
+	}
+}
+func TestPPTXSectionsIgnored(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.pptx")
+	sections := `<p:extLst><p:ext uri="{521415D9-36F7-43E2-AB2F-B90AF26B5E84}"><p14:sectionLst xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main"><p14:section name="A" id="{1}"><p14:sldIdLst><p14:sldId id="300"/></p14:sldIdLst></p14:section><p14:section name="B" id="{2}"><p14:sldIdLst><p14:sldId id="256"/></p14:sldIdLst></p14:section></p14:sectionLst></p:ext></p:extLst>`
+	fixtureWithExt(t, p, []fixtureSlide{{"300", "slide9", "First", false}, {"256", "slide1", "Second", false}}, sections)
+	d, e := ReadDeck(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(d.Slides) != 2 || d.Slides[0].ID != "300" || d.Slides[1].ID != "256" {
 		t.Fatalf("%+v", d)
 	}
 }
@@ -188,7 +204,7 @@ func (v *fakeVoice) server(t *testing.T) *httptest.Server {
 		case "/version":
 			fmt.Fprint(w, `"0.test"`)
 		case "/speakers":
-			fmt.Fprint(w, `[{"name":"Test","speaker_uuid":"uuid","version":"1","styles":[{"name":"Normal","id":3,"type":"talk"}]}]`)
+			fmt.Fprint(w, `[{"name":"Test","speaker_uuid":"uuid","version":"1","styles":[{"name":"Normal","id":3,"type":"streaming_talk"}]}]`)
 		case "/core_versions":
 			fmt.Fprint(w, `["test"]`)
 		case "/engine_manifest":
